@@ -1,9 +1,11 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
+
 import numpy as np
 from sklearn.utils.linear_assignment_ import linear_assignment
-from . import kalman_filter
 
+from . import kalman_filter
+from .iou_matching import natural_iou_cost
 
 INFTY_COST = 1e+5
 
@@ -121,12 +123,61 @@ def matching_cascade(
 
     unmatched_detections = detection_indices
     matches = []
+
+    # old matching cascade that gives priority to newer tracks.
+    # for level in range(cascade_depth):
+    #     if len(unmatched_detections) == 0:  # No detections left
+    #         break
+    #
+    #     track_indices_l = [
+    #         k for k in track_indices
+    #         if tracks[k].time_since_update == 1 + level
+    #     ]
+    #     if len(track_indices_l) == 0:  # Nothing to match at this level
+    #         continue
+    #
+    #     matches_l, _, unmatched_detections = \
+    #         min_cost_matching(
+    #             distance_metric, max_distance, tracks, detections,
+    #             track_indices_l, unmatched_detections)
+    #     matches += matches_l
+    # end of old matching cascade
+
+    # new matching cascade that gives priority to tracks within iou range at any level.
+    iou_cost_matrix = natural_iou_cost(tracks, detections)
+    unmatched_tracks = track_indices
+    if len(unmatched_tracks) == 0:
+        max_hits = 1
+    else:
+        max_hits = max(t.hits for t in tracks)
+    max_hits = min(max_hits, cascade_depth)
+    for level in range(max_hits, 0, -1):
+        if len(unmatched_detections) == 0:  # No detections left
+            break
+        track_indices_l = [
+            k for k in track_indices
+            if k in unmatched_tracks and tracks[k].hits >= level and np.min(iou_cost_matrix[k]) < 1
+        ]
+        if len(track_indices_l) == 0:  # Nothing to match at this level
+            continue
+
+        matches_l, _, unmatched_detections = \
+            min_cost_matching(
+                distance_metric, max_distance, tracks, detections,
+                track_indices_l, unmatched_detections)
+        # need to check intersection again
+        matches_l = [
+            match for match in matches_l
+            if iou_cost_matrix[match] < 1
+        ]
+        matches += matches_l
+        unmatched_tracks = list(set(unmatched_tracks) - set(k for k, _ in matches_l))
+
     for level in range(cascade_depth):
         if len(unmatched_detections) == 0:  # No detections left
             break
-
         track_indices_l = [
-            k for k in track_indices
+            k for k in unmatched_tracks
             if tracks[k].time_since_update == 1 + level
         ]
         if len(track_indices_l) == 0:  # Nothing to match at this level
@@ -137,6 +188,8 @@ def matching_cascade(
                 distance_metric, max_distance, tracks, detections,
                 track_indices_l, unmatched_detections)
         matches += matches_l
+    # end of new matching cascade
+
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
     return matches, unmatched_tracks, unmatched_detections
 

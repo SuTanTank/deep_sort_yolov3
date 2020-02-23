@@ -1,9 +1,11 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
+
 import numpy as np
+
+from . import iou_matching
 from . import kalman_filter
 from . import linear_assignment
-from . import iou_matching
 from .track import Track
 
 
@@ -37,15 +39,17 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3):
+    def __init__(self, metric, cat=1, fov=None, max_iou_distance=0.15, max_age=60, n_init=3):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
         self.n_init = n_init
 
+        self.fov = fov
         self.kf = kalman_filter.KalmanFilter()
         self.tracks = []
         self._next_id = 1
+        self.cat = cat
 
     def predict(self):
         """Propagate track state distributions one time step forward.
@@ -53,9 +57,9 @@ class Tracker:
         This function should be called once every time step, before `update`.
         """
         for track in self.tracks:
-            track.predict(self.kf)
+            track.predict(self.kf, self.fov)
 
-    def update(self, detections):
+    def update(self, detections, encoder, frame):
         """Perform measurement update and track management.
 
         Parameters
@@ -63,15 +67,43 @@ class Tracker:
         detections : List[deep_sort.detection.Detection]
             A list of detections at the current time step.
 
+        encoder : feature extractor for human re-identification.
+
+        frame: the current processing frame.
         """
         # Run matching cascade.
-        matches, unmatched_tracks, unmatched_detections = \
+        matches_a, matches_b, unmatched_tracks, unmatched_detections = \
             self._match(detections)
 
-        # Update track set.
-        for track_idx, detection_idx in matches:
-            self.tracks[track_idx].update(
-                self.kf, detections[detection_idx])
+        # Update track set, also return the list of boxes.
+        track_boxes = []
+        tracks_idx_update = []
+        # if matched by feature, then use updated box, otherwise use the box before updating, (tricky here)
+        # not updating if the size change too much, for tracking, it is usually a wrong detection
+        for track_idx, detection_idx in matches_a:
+            if self.tracks[track_idx].update(self.kf, detections[detection_idx], frame.shape[:-1]):
+                tracks_idx_update.append(track_idx)
+                track_boxes.append(self.tracks[track_idx].to_tlwh().tolist())
+            else:
+                unmatched_tracks.append(track_idx)
+                unmatched_detections.append(detection_idx)
+
+        for track_idx, detection_idx in matches_b:
+            track_boxes.append(self.tracks[track_idx].to_tlwh().tolist())
+            if self.tracks[track_idx].update(self.kf, detections[detection_idx], frame.shape[:-1]):
+                tracks_idx_update.append(track_idx)
+            else:
+                track_boxes.pop()
+                unmatched_tracks.append(track_idx)
+                unmatched_detections.append(detection_idx)
+
+        track_boxes = np.asarray(track_boxes)
+        track_features = encoder(frame, track_boxes)
+
+        # compute and update features
+        for track_idx, feature in zip(tracks_idx_update, track_features):
+            self.tracks[track_idx].append_feature(feature)
+
         for track_idx in unmatched_tracks:
             self.tracks[track_idx].mark_missed()
         for detection_idx in unmatched_detections:
@@ -126,13 +158,13 @@ class Tracker:
                 iou_matching.iou_cost, self.max_iou_distance, self.tracks,
                 detections, iou_track_candidates, unmatched_detections)
 
-        matches = matches_a + matches_b
+        # matches = matches_a + matches_b
         unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
-        return matches, unmatched_tracks, unmatched_detections
+        return matches_a, matches_b, unmatched_tracks, unmatched_detections
 
     def _initiate_track(self, detection):
         mean, covariance = self.kf.initiate(detection.to_xyah())
         self.tracks.append(Track(
-            mean, covariance, self._next_id, self.n_init, self.max_age,
+            self.cat, mean, covariance, self._next_id, self.n_init, self.max_age,
             detection.feature))
         self._next_id += 1

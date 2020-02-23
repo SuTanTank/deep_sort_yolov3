@@ -1,5 +1,6 @@
 # vim: expandtab:ts=4:sw=4
 import argparse
+
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 

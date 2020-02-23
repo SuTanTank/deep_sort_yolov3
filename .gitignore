@@ -1,0 +1,8 @@
+*.avi
+*.mp4
+*.weights
+*.h5
+*.txt
+.vscode/
+.idea
+__pycache__

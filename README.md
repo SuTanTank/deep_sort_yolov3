@@ -1,4 +1,3 @@
-QQ group: 姿态检测＆跟踪 781184396
 
 # Introduction
   Thanks for these projects, this work now is support tiny_yolo v3 but only for test, if you want to train you can either train a model in darknet or in the second following works. It also can tracks many objects in coco classes, so please note to modify the classes in yolo.py. besides, you also can use camera for testing.
@@ -31,27 +30,12 @@ QQ group: 姿态检测＆跟踪 781184396
     NumPy
     sklean
     OpenCV
-    Pillow
 
   Additionally, feature generation requires TensorFlow-1.4.0.
 
-# Training the model
-
-  To train the deep association metric model on your datasets you can reference to https://github.com/nwojke/cosine_metric_learning  approach which is provided as a separate repository.
-  
-  Be careful that the code ignores everything but person. For your task do not forget to change :
-  
-  [deep_sort_yolov3/yolo.py]   Lines 100 to 101 :
-  
-          if predicted_class != 'person' : 
-               continue 
-
 # Note 
-  You can use any Detector you like to replace Keras_version YOLO to get bboxes , for it is to slow !
-  
+
   Model file model_data/mars-small128.pb need by deep_sort had convert to tensorflow-1.4.0
-  
-  Deep sort 程序结构见 “model_data/DeepSORT”，如有错误欢迎联系修改。
  
 # Test only
 

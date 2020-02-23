@@ -7,16 +7,14 @@ Run a YOLO_v3 style detection model on test images.
 import colorsys
 import os
 import random
-from timeit import time
-from timeit import default_timer as timer  ### to calculate FPS
 
 import numpy as np
 from keras import backend as K
 from keras.models import load_model
-from PIL import Image, ImageFont, ImageDraw
 
 from yolo3.model import yolo_eval
 from yolo3.utils import letterbox_image
+
 
 class YOLO(object):
     def __init__(self):
@@ -72,7 +70,7 @@ class YOLO(object):
                 score_threshold=self.score, iou_threshold=self.iou)
         return boxes, scores, classes
 
-    def detect_image(self, image):
+    def detect_image(self, image, object_class):
         if self.is_fixed_size:
             assert self.model_image_size[0]%32 == 0, 'Multiples of 32 required'
             assert self.model_image_size[1]%32 == 0, 'Multiples of 32 required'
@@ -95,12 +93,13 @@ class YOLO(object):
                 K.learning_phase(): 0
             })
         return_boxs = []
+        return_scores = []
         for i, c in reversed(list(enumerate(out_classes))):
             predicted_class = self.class_names[c]
-            if predicted_class != 'person' :
+            if predicted_class != object_class:
                 continue
             box = out_boxes[i]
-           # score = out_scores[i]  
+            score = out_scores[i]  
             x = int(box[1])  
             y = int(box[0])  
             w = int(box[3]-box[1])
@@ -112,8 +111,9 @@ class YOLO(object):
                 h = h + y
                 y = 0 
             return_boxs.append([x,y,w,h])
+            return_scores.append(score)
 
-        return return_boxs
+        return return_boxs, return_scores
 
     def close_session(self):
         self.sess.close()

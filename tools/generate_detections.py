@@ -1,9 +1,10 @@
 # vim: expandtab:ts=4:sw=4
-import os
-import errno
 import argparse
-import numpy as np
+import errno
+import os
+
 import cv2
+import numpy as np
 import tensorflow as tf
 
 
@@ -102,15 +103,28 @@ def create_box_encoder(model_filename, input_name="images",
 
     def encoder(image, boxes):
         image_patches = []
-        for box in boxes:
+        if np.shape(boxes) == (4,):
+            box = boxes
             patch = extract_image_patch(image, box, image_shape[:2])
             if patch is None:
                 print("WARNING: Failed to extract image patch: %s." % str(box))
                 patch = np.random.uniform(
                     0., 255., image_shape).astype(np.uint8)
             image_patches.append(patch)
-        image_patches = np.asarray(image_patches)
-        return image_encoder(image_patches, batch_size)
+            image_patches = np.asarray(image_patches)
+            feat = image_encoder(image_patches, batch_size)
+            return np.reshape(feat, (128,))
+        else:
+            for box in boxes:
+                patch = extract_image_patch(image, box, image_shape[:2])
+                if patch is None:
+                    print("WARNING: Failed to extract image patch: %s." % str(box))
+                    patch = np.random.uniform(
+                        0., 255., image_shape).astype(np.uint8)
+                image_patches.append(patch)
+            image_patches = np.asarray(image_patches)
+            feat = image_encoder(image_patches, batch_size)
+            return feat
 
     return encoder
 

@@ -4,6 +4,7 @@ from functools import reduce
 
 from PIL import Image
 
+
 def compose(*funcs):
     """Compose arbitrarily many functions, evaluated left to right.
 
